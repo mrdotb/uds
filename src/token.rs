@@ -3,8 +3,6 @@ extern crate oauth2;
 extern crate rand;
 extern crate url;
 extern crate serde_json;
-//extern crate failure;
-
 
 use crate::errors::*;
 use serde_json::{Value};
@@ -14,32 +12,40 @@ use oauth2::*;
 use oauth2::prelude::*;
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenUrl, 
-    //StandardTokenResponse, RequestTokenError
 };
 use std::env;
-use std::io;
 use std::io::prelude::*;
 use std::io::{BufRead, BufReader, Write};
 use std::fs::File;
 use std::net::TcpListener;
-//use std::option::{NoneError};
 use url::{Url};
 
+fn get_secrets() -> Result<(String, String)> {
+    match File::open("credentials.json") {
+        Ok(mut file) => {
+            let mut serialized_json = String::new();
+
+            file.read_to_string(&mut serialized_json)?;
+            let credentials: Value = serde_json::from_str(&serialized_json)?;
+            let client_id: String = credentials["installed"]["client_id"]
+                .as_str().unwrap().to_owned();
+            let client_secret: String = credentials["installed"]["client_secret"]
+                .as_str().unwrap().to_owned();
+            Ok((client_id, client_secret))
+        },
+        Err(_err) => {
+            let client_id = env::var("GOOGLE_CLIENT_ID")?;
+            let client_secret = env::var("GOOGLE_CLIENT_SECRET")?;
+            Ok((client_id, client_secret))
+        }
+    }
+}
 
 fn create_client() -> Result<BasicClient> {
-    let mut file = File::open("credentials.json")?;
-    let mut serialized_json = String::new();
+    let (client_id, client_secret) = get_secrets()?;
 
-    file.read_to_string(&mut serialized_json)?;
-    let credentials: Value = serde_json::from_str(&serialized_json)?;
-    println!("credentials {:?}", credentials);
-
-
-    let var_client_id = env::var("GOOGLE_CLIENT_ID")?;
-    let var_client_secret = env::var("GOOGLE_CLIENT_SECRET")?;
-
-    let google_client_id = ClientId::new(var_client_id);
-    let google_client_secret = ClientSecret::new(var_client_secret);
+    let google_client_id = ClientId::new(client_id);
+    let google_client_secret = ClientSecret::new(client_secret);
 
     let url = Url::parse("https://accounts.google.com/o/oauth2/v2/auth")?;
     let auth_url = AuthUrl::new(url);
@@ -81,7 +87,7 @@ fn extract_from_url<'a>(url: &'a Url, key: &'static str) -> String {
     value.into_owned()
 }
 
-fn create_redirect_server() -> Result<BasicTokenResponse> {
+fn create_redirect_server() -> Result<String> {
     let client = create_client()?;
     let (authorize_url, csrf_state) =
         client.authorize_url(CsrfToken::new_random);
@@ -97,7 +103,7 @@ fn create_redirect_server() -> Result<BasicTokenResponse> {
     let mut request_line = String::new();
 
     reader.read_line(&mut request_line)?;
-    println!("request_line: {:?}", request_line);
+    //println!("request_line: {:?}", request_line);
 
     let redirect_url = request_line.split_whitespace().nth(1).unwrap();
     let url = Url::parse(&("http://localhost".to_string() + redirect_url))?;
@@ -119,20 +125,20 @@ fn create_redirect_server() -> Result<BasicTokenResponse> {
 
     assert_eq!(state.secret(), csrf_state.secret());
     let token = client.exchange_code(code).unwrap();
-    let token = cache(token)?;
 
-    Ok(token)
+    cache(&token)?;
+
+    Ok(token.access_token().secret().to_owned())
 }
 
-fn cache(token: BasicTokenResponse) -> Result<BasicTokenResponse> {
-    // Save serialized token
-    let serialized_json = serde_json::to_string(&token)?;
+fn cache(token: &BasicTokenResponse) -> Result<()> {
+    let serialized_json = serde_json::to_string(token)?;
     let mut file = File::create("token.json")?;
     file.write_all(serialized_json.as_bytes())?;
-    Ok(token)
+    Ok(())
 }
 
-fn check_cache() -> Result<BasicTokenResponse> {
+fn check_cache() -> Result<String> {
     let mut file = File::open("token.json")?;
     let mut serialized_json = String::new();
 
@@ -146,15 +152,17 @@ fn check_cache() -> Result<BasicTokenResponse> {
 
 
     if fresh_token.access_token().secret() != token.access_token().secret() {
+        //https://github.com/ramosbugs/oauth2-rs/issues/62
         fresh_token.set_refresh_token(Some(refresh_token.to_owned()));
-        cache(fresh_token)
+        cache(&fresh_token)?;
+        Ok(fresh_token.access_token().secret().to_owned())
     } else {
-        Ok(token)
+        Ok(token.access_token().secret().to_owned())
     }
 }
 
-pub fn get() -> Result<BasicTokenResponse> {
-    //check_cache().or_else(|_err|{
+pub fn get() -> Result<String> {
+    check_cache().or_else(|_err|{
         create_redirect_server()
-    //})
+    })
 }
