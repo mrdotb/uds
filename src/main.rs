@@ -15,9 +15,12 @@ extern crate serde_derive;
 
 // extern crate
 extern crate url;
+extern crate reqwest;
 
 // mod
 mod token;
+mod file;
+mod api;
 
 // use
 use std::process;
@@ -31,6 +34,7 @@ mod errors {
             Json(::serde_json::error::Error);
             Url(::url::ParseError);
             Var(::std::env::VarError);
+            Reqwest(::reqwest::Error);
         }
     }
 
@@ -50,17 +54,6 @@ mod errors {
 }
 
 use crate::errors::*;
-//extern crate base64;
-//extern crate serde;
-//extern crate serde_json;
-
-//mod token;
-//mod api;
-
-//use std::fs::File;
-//use std::fs;
-//use std::str;
-//use std::io::prelude::*;
 
 fn run() -> Result<bool> {
     let matches = ClapApp::new(crate_name!())
@@ -84,6 +77,9 @@ fn run() -> Result<bool> {
                         ))
         .get_matches();
 
+    let token = token::get()?;
+    //println!("token {}", token);
+
     match matches.subcommand() {
         ("upload", Some(matches)) =>{
             let files = matches
@@ -91,7 +87,9 @@ fn run() -> Result<bool> {
                 .chain_err(|| "No file argument found")?
                 .collect::<Vec<_>>();
 
-            println!("file {:?}", files);
+            file::upload(token, &files)?;
+
+            //println!("file {:?}", files);
         },
         ("download", Some(matches)) =>{
             let files = matches
@@ -108,7 +106,6 @@ fn run() -> Result<bool> {
 }
 
 fn main() {
-    token::get();
     let result = run();
 
     match result {
@@ -124,20 +121,3 @@ fn main() {
         }
     }
 }
-
-//api::create_folder(token.clone(), "test".to_owned());
-//let mut f = File::open("img.b64").unwrap();
-//let mut buffer = Vec::new();
-//f.read_to_end(&mut buffer).unwrap();
-//let c = str::from_utf8(&buffer).unwrap();
-
-//let c = "test";
-//api::create_document(token.access_token().secret().clone(), "test".to_owned(), c.to_owned());
-//let mut f = File::open("myway.vob").unwrap();
-//let mut buffer = Vec::new();
-
-//let size = f.read_to_end(&mut buffer).unwrap();
-//let b64 = base64::encode(&buffer);
-//println!("size = {}", size);
-//fs::write("test.b64", &b64).unwrap();
-//println!("b64= {}", b64);
