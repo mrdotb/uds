@@ -1,18 +1,17 @@
 extern crate reqwest;
 
-
-
 use reqwest::Client;
 use reqwest::multipart;
 
+use crate::errors::*;
 
 #[derive(Deserialize, Debug)]
-struct CreateFolderResponse {
+pub struct ApiResponse {
     id: String,
     name: String,
 }
 
-pub fn create_folder(token: String, name: String) {
+pub fn create_folder(token: String, name: String) -> Result<ApiResponse> {
     let body = json!({
         "mimeType": "application/vnd.google-apps.folder",
         "name": name
@@ -21,20 +20,18 @@ pub fn create_folder(token: String, name: String) {
         "https://content.googleapis.com/drive/v3/files?access_token={token}",
         token = token
     );
-    //println!("{}", url);
+
     let mut response = Client::new()
         .post(&url)
         .json(&body)
-        .send()
-        .unwrap();
+        .send()?;
 
-    let response: CreateFolderResponse = response.json().unwrap();
+    let response: ApiResponse = response.json()?;
     //println!("{}", response.id);
+    Ok(response)
 }
 
-pub fn create_document(token: String, name: String, content: String) {
-    let max_doc_length = 1000000;
-
+pub fn create_document(token: &str, name: String, content: String) -> Result<ApiResponse> {
     let body = json!({
         "mimeType": "application/vnd.google-apps.document",
         "name": name,
@@ -59,15 +56,18 @@ pub fn create_document(token: String, name: String, content: String) {
         "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&access_token={token}",
         token = token
     );
-    //let url = "http://localhost:3000".to_owned();
+
     //println!("form {:#?}", form);
     let mut response = Client::builder()
-//        .timeout(Duration::from_secs(100))
+    //  .timeout(Duration::from_secs(100))
         .build()
         .unwrap()
         .post(&url)
         .multipart(form)
-        .send();
+        .send()?;
 
    //println!("response {:#?}", response);
+    let response: ApiResponse = response.json()?;
+    //println!("{}", response.id);
+    Ok(response)
 }
