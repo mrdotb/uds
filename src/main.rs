@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // `error_chain!` can recurse deeply
 #![recursion_limit = "1024"]
 
@@ -14,13 +15,14 @@ extern crate serde_json;
 extern crate serde_derive;
 
 // extern crate
-extern crate url;
+extern crate md5;
 extern crate reqwest;
+extern crate url;
 
 // mod
 mod token;
 mod file;
-mod api;
+mod gapi;
 
 // use
 use std::process;
@@ -77,8 +79,7 @@ fn run() -> Result<bool> {
                         ))
         .get_matches();
 
-    let token = token::get()?;
-    //println!("token {}", token);
+    let client = gapi::DriveApi::new()?;
 
     match matches.subcommand() {
         ("upload", Some(matches)) =>{
@@ -87,17 +88,21 @@ fn run() -> Result<bool> {
                 .chain_err(|| "No file argument found")?
                 .collect::<Vec<_>>();
 
-            file::upload(token, &files)?;
+            file::upload(client, &files)?;
 
-            //println!("file {:?}", files);
+            println!("file {:?}", files);
         },
         ("download", Some(matches)) =>{
-            let files = matches
+            let ids = matches
                 .values_of("file")
                 .chain_err(|| "No file argument found")?
                 .collect::<Vec<_>>();
 
-            println!("file {:?}", files);
+            file::download(client, &ids)?;
+            println!("ids {:?}", ids);
+        },
+        ("list", _) =>{
+            file::list(client).unwrap();
         },
         ("", None) => println!("No subcommand was used"),
         _ => unreachable!(),
